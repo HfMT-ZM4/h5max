@@ -9,6 +9,8 @@
 #define H5FILE_OUTLET_MAIN 0
 #define H5FILE_OUTLET_INFO 1
 
+#define H5FILE_MAX_RANK 16
+
 void *h5file_class;
 
 typedef struct _h5file
@@ -21,7 +23,13 @@ typedef struct _h5file
 } h5file;
 
 t_symbol *ps_emptystring, *ps_info, *ps_dataset, *ps_group,
-    *ps_floatingpoint, *ps_orderle, *ps_orderbe, *ps_hyperslab;
+    *ps_floatingpoint, *ps_orderle, *ps_orderbe, *ps_hyperslab,
+    *ps_coords, *ps_vals;
+
+static void postOutOfMemError(h5file *x, size_t nbytes)
+{
+    object_error((t_object *)x, "couldn't allocate %d bytes", nbytes);
+}
 
 static void h5file_getHyperslab(h5file *x,
                                 t_symbol *s,
@@ -29,78 +37,100 @@ static void h5file_getHyperslab(h5file *x,
                                 t_atom *av)
 {
     /* 
-       gethyperslab Temperature 0 10 0 10 0 10
+       example message we expect:
+         gethyperslab Temperature 0 10 0 10 0 10
     */
+    const t_symbol * const datasetname = atom_getsym(av);
+    const char * const datasetname_str = datasetname->s_name;
+    const size_t outoffset = 0;
+    t_atom *out = NULL;
+
+    hsize_t n = 1;
+    herr_t status = 0;
+    
     hid_t file = x->fileid;
+    hid_t dataset = -1;
+    hid_t datatype = -1;
+    H5T_class_t class = -1;
+    H5T_order_t order = -1;
+    size_t size = 0;
+    hid_t dataspace = -1;
+    int rank = -1;
+    hsize_t indims[H5FILE_MAX_RANK];
+    memset(indims, 0, sizeof(hsize_t) * H5FILE_MAX_RANK);
+    hsize_t offsets[H5FILE_MAX_RANK];
+    memset(offsets, 0, sizeof(hsize_t) * H5FILE_MAX_RANK);
+    hsize_t counts[H5FILE_MAX_RANK];
+    memset(counts, 0, sizeof(hsize_t) * H5FILE_MAX_RANK);
+    hsize_t offsets_out[H5FILE_MAX_RANK];
+    memset(offsets_out, 0, sizeof(hsize_t) * H5FILE_MAX_RANK);
+    hid_t memspace = -1;
+    
     if(file <= 0)
     {
         object_error((t_object *)x, "no file open");
-        return;
+        goto cleanup;
     }
     if(ac < 3)
     {
         object_error((t_object *)x,
                      "requires at least three arguments: "
-                     "name of the dataspace, dim0 offset, dim0 count, "
+                     "name of the dataset, dim0 offset, dim0 count, "
                      "... <dimN offset> <dimN count>");
-        return;
+        goto cleanup;
     }
     if(atom_gettype(av) != A_SYM)
     {
         object_error((t_object *)x,
                      "first argument must be a symbol "
-                     "(the name of the dataspace)");
-        return;
+                     "(the name of the dataset)");
+        goto cleanup;
     }
-    t_symbol *name = atom_getsym(av);
 
-    hid_t dataset = H5Dopen2(file, name->s_name, H5P_DEFAULT);
+    dataset = H5Dopen2(file, datasetname_str, H5P_DEFAULT);
     if(dataset < 0)
     {
         object_error((t_object *)x,
                      "couldn't open dataset %s",
-                     name->s_name);
-        return;
+                     datasetname_str);
+        goto cleanup;
     }
-    hid_t datatype = H5Dget_type(dataset);
+    datatype = H5Dget_type(dataset);
     if(datatype < 0)
     {
         object_error((t_object *)x,
                      "couldn't open datatype for dataset %s",
-                     name->s_name);
-        H5Sclose(dataset);
-        return;
+                     datasetname_str);
+        goto cleanup;
     }
-    H5T_class_t class = H5Tget_class(datatype);
-    H5T_order_t order = H5Tget_order(datatype);
-    size_t size = H5Tget_size(datatype);
+    class = H5Tget_class(datatype);
+    order = H5Tget_order(datatype);
+    size = H5Tget_size(datatype);
 
-    hid_t dataspace = H5Dget_space(dataset);
+    dataspace = H5Dget_space(dataset);
     if(dataspace < 0)
     {
         object_error((t_object *)x,
                      "couldn't open dataspace for dataset %s",
-                     name->s_name);
-        H5Sclose(datatype);
-        H5Sclose(dataset);
-        return;
+                     datasetname_str);
+        goto cleanup;
     }
-    int rank = H5Sget_simple_extent_ndims(dataspace);
+    rank = H5Sget_simple_extent_ndims(dataspace);
+    if(rank > H5FILE_MAX_RANK)
+    {
+        object_error((t_object *)x,
+                     "max rank exceded (%d > %d)",
+                     rank, H5FILE_MAX_RANK);
+        goto cleanup;
+    }
     if(rank != ((ac - 1) / 2))
     {
         object_error((t_object *)x,
                      "expected %d args, but got %d",
                      rank + 1, ac);
-        H5Sclose(dataspace);
-        H5Sclose(datatype);
-        H5Sclose(dataset);
-        return;
+        goto cleanup;
     }
-    hsize_t indims[rank];
-    int status_n = H5Sget_simple_extent_dims(dataspace, indims, NULL);
-    hsize_t offsets[rank];
-    hsize_t counts[rank];
-    hsize_t n = 1;
+    status = H5Sget_simple_extent_dims(dataspace, indims, NULL);
     for(int i = 0; i < rank; i++)
     {
         long offset = atom_getlong(av + 1 + (i * 2));
@@ -112,42 +142,45 @@ static void h5file_getHyperslab(h5file *x,
                          "index for dimension %d out of bounds:"
                          "%d + %d >= %d",
                          i, offset, count, indims[i]);
-            H5Sclose(dataspace);
-            H5Sclose(datatype);
-            H5Sclose(dataset);
-            return;
+            goto cleanup;
         }
         offsets[i] = offset;
         counts[i] = count;
     }
-    herr_t status = H5Sselect_hyperslab(dataspace,
-                                        H5S_SELECT_SET,
-                                        offsets, NULL,
-                                        counts, NULL);
+    status = H5Sselect_hyperslab(dataspace,
+                                 H5S_SELECT_SET,
+                                 offsets, NULL,
+                                 counts, NULL);
     if(status < 0)
     {
         object_error((t_object *)x, "error selecting hyperslab");
-        H5Sclose(dataspace);
-        H5Sclose(datatype);
-        H5Sclose(dataset);
+        goto cleanup;
     }
-    hid_t memspace = H5Screate_simple(rank, counts, NULL);
+    memspace = H5Screate_simple(rank, counts, NULL);
     if(memspace < 0)
     {
         object_error((t_object *)x, "error creating memspace");
-        H5Sclose(dataspace);
-        H5Sclose(datatype);
-        H5Sclose(dataset);
+        goto cleanup;
     }
-    hsize_t offsets_out[rank];
-    memset(offsets_out, 0, rank * sizeof(hsize_t));
     status = H5Sselect_hyperslab(memspace,
                                  H5S_SELECT_SET,
                                  offsets_out, NULL,
                                  counts, NULL);
 
-    const size_t outoffset = 0;
-    t_atom *out = (t_atom *)malloc(((n + outoffset) * sizeof(t_atom)));
+    if(status < 0)
+    {
+        object_error((t_object *)x, "error selecting hyperslab");
+        goto cleanup;
+    }
+    
+
+    
+    out = (t_atom *)malloc(((n + outoffset) * sizeof(t_atom)));
+    if(!out)
+    {
+        postOutOfMemError(x, (n + outoffset) * sizeof(t_atom));
+        goto cleanup;
+    }
     
     switch(class)
     {
@@ -162,6 +195,11 @@ static void h5file_getHyperslab(h5file *x,
             case H5T_ORDER_LE:
             {
                 float *d = (float *)calloc(n, sizeof(float));
+                if(!d)
+                {
+                    postOutOfMemError(x, n * sizeof(float));
+                    goto cleanup;
+                }
                 status = H5Dread(dataset,
                                  H5T_IEEE_F32LE,
                                  memspace,
@@ -173,6 +211,7 @@ static void h5file_getHyperslab(h5file *x,
                 {
                     atom_setfloat(out + i + outoffset, d[i]);
                 }
+                free(d);
             }
             break;
             case H5T_ORDER_BE:
@@ -195,6 +234,11 @@ static void h5file_getHyperslab(h5file *x,
             case H5T_ORDER_LE:
             {
                 double *d = (double *)calloc(n, sizeof(double));
+                if(!d)
+                {
+                    postOutOfMemError(x, n * sizeof(double));
+                    goto cleanup;
+                }
                 status = H5Dread(dataset,
                                  H5T_IEEE_F64LE,
                                  memspace,
@@ -223,6 +267,12 @@ static void h5file_getHyperslab(h5file *x,
     }
     outlet_anything(x->outlets[H5FILE_OUTLET_MAIN], ps_hyperslab,
                     n + outoffset, out);
+
+cleanup:
+    if(out)
+    {
+    	free(out);
+    }
     H5Sclose(memspace);
     H5Sclose(dataspace);
     H5Sclose(datatype);
@@ -558,4 +608,6 @@ void ext_main(void *r)
     ps_orderle = gensym("little endian");
     ps_orderbe = gensym("big endian");
     ps_hyperslab = gensym("hyperslab");
+    ps_coords = gensym("coords");
+    ps_vals = gensym("vals");
 }

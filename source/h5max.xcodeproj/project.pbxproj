@@ -16,12 +16,9 @@
 /* Begin PBXFileReference section */
 		521D23B42750F11300DBD422 /* h5.file.mxo */ = {isa = PBXFileReference; explicitFileType = wrapper.cfbundle; includeInIndex = 0; path = h5.file.mxo; sourceTree = BUILT_PRODUCTS_DIR; };
 		521D23B62750F6A700DBD422 /* h5.file.c */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.c.c; path = h5.file.c; sourceTree = "<group>"; };
-		52DABC13274E719E006D4C45 /* h5.buffer.c */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.c.c; path = h5.buffer.c; sourceTree = "<group>"; };
 		52DABC17274E71F2006D4C45 /* commonsyms.c */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.c.c; name = commonsyms.c; path = "../../max-sdk-base/c74support/max-includes/common/commonsyms.c"; sourceTree = "<group>"; };
 		52DABC19274E7207006D4C45 /* MaxAPI.framework */ = {isa = PBXFileReference; lastKnownFileType = wrapper.framework; name = MaxAPI.framework; path = "../../max-sdk-base/c74support/max-includes/MaxAPI.framework"; sourceTree = "<group>"; };
 		52DABC1D274E8A40006D4C45 /* libhdf5.a */ = {isa = PBXFileReference; lastKnownFileType = archive.ar; name = libhdf5.a; path = ../../hdf5/src/.libs/libhdf5.a; sourceTree = "<group>"; };
-		52DABC2E274EC257006D4C45 /* h5max.c */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.c.c; path = h5max.c; sourceTree = "<group>"; };
-		52DABC31274ECA11006D4C45 /* h5.info.c */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.c.c; path = h5.info.c; sourceTree = "<group>"; };
 /* End PBXFileReference section */
 
 /* Begin PBXFrameworksBuildPhase section */
@@ -41,9 +38,6 @@
 			isa = PBXGroup;
 			children = (
 				521D23B62750F6A700DBD422 /* h5.file.c */,
-				52DABC2E274EC257006D4C45 /* h5max.c */,
-				52DABC13274E719E006D4C45 /* h5.buffer.c */,
-				52DABC31274ECA11006D4C45 /* h5.info.c */,
 				52DABC17274E71F2006D4C45 /* commonsyms.c */,
 				52DABC1D274E8A40006D4C45 /* libhdf5.a */,
 				52DABC19274E7207006D4C45 /* MaxAPI.framework */,
