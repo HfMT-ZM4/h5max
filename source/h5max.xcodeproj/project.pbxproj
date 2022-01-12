@@ -11,11 +11,15 @@
 		521D23AE2750F11300DBD422 /* libhdf5.a in Frameworks */ = {isa = PBXBuildFile; fileRef = 52DABC1D274E8A40006D4C45 /* libhdf5.a */; };
 		521D23AF2750F11300DBD422 /* MaxAPI.framework in Frameworks */ = {isa = PBXBuildFile; fileRef = 52DABC19274E7207006D4C45 /* MaxAPI.framework */; };
 		521D23B72750F6A700DBD422 /* h5.file.c in Sources */ = {isa = PBXBuildFile; fileRef = 521D23B62750F6A700DBD422 /* h5.file.c */; };
+		52D13B96278EFBC5001299E5 /* JitterAPI.framework in Frameworks */ = {isa = PBXBuildFile; fileRef = 52D13B95278EFBC5001299E5 /* JitterAPI.framework */; };
+		52D13B98278F1AFB001299E5 /* h5.file.jit.c in Sources */ = {isa = PBXBuildFile; fileRef = 52D13B97278F1AFA001299E5 /* h5.file.jit.c */; };
 /* End PBXBuildFile section */
 
 /* Begin PBXFileReference section */
 		521D23B42750F11300DBD422 /* h5.file.mxo */ = {isa = PBXFileReference; explicitFileType = wrapper.cfbundle; includeInIndex = 0; path = h5.file.mxo; sourceTree = BUILT_PRODUCTS_DIR; };
 		521D23B62750F6A700DBD422 /* h5.file.c */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.c.c; path = h5.file.c; sourceTree = "<group>"; };
+		52D13B95278EFBC5001299E5 /* JitterAPI.framework */ = {isa = PBXFileReference; lastKnownFileType = wrapper.framework; name = JitterAPI.framework; path = "../../max-sdk-base/c74support/jit-includes/JitterAPI.framework"; sourceTree = "<group>"; };
+		52D13B97278F1AFA001299E5 /* h5.file.jit.c */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.c.c; path = h5.file.jit.c; sourceTree = "<group>"; };
 		52DABC17274E71F2006D4C45 /* commonsyms.c */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.c.c; name = commonsyms.c; path = "../../max-sdk-base/c74support/max-includes/common/commonsyms.c"; sourceTree = "<group>"; };
 		52DABC19274E7207006D4C45 /* MaxAPI.framework */ = {isa = PBXFileReference; lastKnownFileType = wrapper.framework; name = MaxAPI.framework; path = "../../max-sdk-base/c74support/max-includes/MaxAPI.framework"; sourceTree = "<group>"; };
 		52DABC1D274E8A40006D4C45 /* libhdf5.a */ = {isa = PBXFileReference; lastKnownFileType = archive.ar; name = libhdf5.a; path = ../../hdf5/src/.libs/libhdf5.a; sourceTree = "<group>"; };
@@ -26,6 +30,7 @@
 			isa = PBXFrameworksBuildPhase;
 			buildActionMask = 2147483647;
 			files = (
+				52D13B96278EFBC5001299E5 /* JitterAPI.framework in Frameworks */,
 				521D23AE2750F11300DBD422 /* libhdf5.a in Frameworks */,
 				521D23AF2750F11300DBD422 /* MaxAPI.framework in Frameworks */,
 			);
@@ -38,9 +43,11 @@
 			isa = PBXGroup;
 			children = (
 				521D23B62750F6A700DBD422 /* h5.file.c */,
+				52D13B97278F1AFA001299E5 /* h5.file.jit.c */,
 				52DABC17274E71F2006D4C45 /* commonsyms.c */,
 				52DABC1D274E8A40006D4C45 /* libhdf5.a */,
 				52DABC19274E7207006D4C45 /* MaxAPI.framework */,
+				52D13B95278EFBC5001299E5 /* JitterAPI.framework */,
 				19C28FB4FE9D528D11CA2CBB /* Products */,
 			);
 			name = iterator;
@@ -138,6 +145,7 @@
 			files = (
 				521D23B72750F6A700DBD422 /* h5.file.c in Sources */,
 				521D23AB2750F11300DBD422 /* commonsyms.c in Sources */,
+				52D13B98278F1AFB001299E5 /* h5.file.jit.c in Sources */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
@@ -172,8 +180,12 @@
 				ENABLE_STRICT_OBJC_MSGSEND = YES;
 				ENABLE_TESTABILITY = YES;
 				EXECUTABLE_EXTENSION = "";
-				FRAMEWORK_SEARCH_PATHS = "\"$(SRCROOT)/../../max-sdk-base/c74support/max-includes\"";
+				FRAMEWORK_SEARCH_PATHS = (
+					"\"$(SRCROOT)/../../max-sdk-base/c74support/max-includes\"",
+					"\"$(SRCROOT)/../../max-sdk-base/c74support/jit-includes\"",
+				);
 				GCC_NO_COMMON_BLOCKS = YES;
+				GCC_OPTIMIZATION_LEVEL = 0;
 				GCC_WARN_64_TO_32_BIT_CONVERSION = YES;
 				GCC_WARN_ABOUT_RETURN_TYPE = YES;
 				GCC_WARN_UNDECLARED_SELECTOR = YES;
@@ -184,6 +196,7 @@
 				HEADER_SEARCH_PATHS = (
 					"\"$(SRCROOT)/../../max-sdk-base/c74support/max-includes\"",
 					"\"$(SRCROOT)/../../hdf5/src\"",
+					"\"$(SRCROOT)/../../max-sdk-base/c74support/jit-includes\"",
 				);
 				INFOPLIST_FILE = "$(SRCROOT)/Info.plist";
 				INSTALL_PATH = externals;
@@ -228,8 +241,12 @@
 				DSTROOT = "$(SRCROOT)/..";
 				ENABLE_STRICT_OBJC_MSGSEND = YES;
 				EXECUTABLE_EXTENSION = "";
-				FRAMEWORK_SEARCH_PATHS = "\"$(SRCROOT)/../../max-sdk-base/c74support/max-includes\"";
+				FRAMEWORK_SEARCH_PATHS = (
+					"\"$(SRCROOT)/../../max-sdk-base/c74support/max-includes\"",
+					"\"$(SRCROOT)/../../max-sdk-base/c74support/jit-includes\"",
+				);
 				GCC_NO_COMMON_BLOCKS = YES;
+				GCC_OPTIMIZATION_LEVEL = 0;
 				GCC_WARN_64_TO_32_BIT_CONVERSION = YES;
 				GCC_WARN_ABOUT_RETURN_TYPE = YES;
 				GCC_WARN_UNDECLARED_SELECTOR = YES;
@@ -240,6 +257,7 @@
 				HEADER_SEARCH_PATHS = (
 					"\"$(SRCROOT)/../../max-sdk-base/c74support/max-includes\"",
 					"\"$(SRCROOT)/../../hdf5/src\"",
+					"\"$(SRCROOT)/../../max-sdk-base/c74support/jit-includes\"",
 				);
 				INFOPLIST_FILE = "$(SRCROOT)/Info.plist";
 				INSTALL_PATH = externals;

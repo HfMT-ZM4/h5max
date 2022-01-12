@@ -4,7 +4,11 @@
 #include "ext.h"
 #include "ext_obex.h"
 #include "ext_path.h"
+#include "jit.common.h"
+#include "max.jit.mop.h"
 #include "hdf5.h"
+
+#include "h5.file.jit.h"
 
 #define H5FILE_OUTLET_MAIN 0
 #define H5FILE_OUTLET_INFO 1
@@ -16,19 +20,110 @@ void *h5file_class;
 typedef struct _h5file
 {
 	t_object ob;
+    void *obex;
     void *outlets[2];
     t_symbol *filename;
     t_symbol *filepath;
     hid_t fileid;
+
+    void *data;
+    int datatype;
+    size_t datalen;
+    size_t datumsize;
+    int rank;
+    hsize_t dims[JIT_MATRIX_MAX_DIMCOUNT];
+
+    t_symbol *jit_matrix_name;
+
 } h5file;
 
 t_symbol *ps_emptystring, *ps_info, *ps_dataset, *ps_group,
     *ps_floatingpoint, *ps_orderle, *ps_orderbe, *ps_hyperslab,
     *ps_coords, *ps_vals;
 
+t_jit_err h5file_jit_init(void);
+
 static void postOutOfMemError(h5file *x, size_t nbytes)
 {
     object_error((t_object *)x, "couldn't allocate %d bytes", nbytes);
+}
+
+static void h5file_outputJitterMatrix(h5file *x,
+                                      void *data,
+                                      int datatype,
+                                      size_t datalen,
+                                      size_t datumsize,
+                                      int rank,
+                                      hsize_t *dims)
+{
+    if(x->data)
+    {
+        if(x->datalen * x->datumsize <
+           datalen * datumsize)
+        {
+            x->data = realloc(data, datalen * datumsize);
+        }
+    }
+    else
+    {
+        x->data = malloc(datalen * datumsize);
+    }
+    if(!x->data)
+    {
+        postOutOfMemError(x, datalen * datumsize);
+        return;
+    }
+    memcpy(x->data, data, datalen * datumsize);
+    x->datatype = datatype;
+    x->datalen = datalen;
+    x->rank = rank;
+    memcpy(x->dims, dims, rank * sizeof(hsize_t));
+    t_atom a;
+    long outputmode = max_jit_mop_getoutputmode(x);
+    h5file_jit *jit_obj = (h5file_jit *)max_jit_obex_jitob_get(x);
+    t_atom dim[rank];
+    for(int i = 0; i < rank; i++)
+    {
+        atom_setlong(dim + i, dims[i]);
+    }
+    jit_object_method_typed(x, gensym("dim"), rank, dim, NULL);
+    switch(datatype)
+    {
+    case H5T_FLOAT:
+        atom_setsym(dim, _jit_sym_float32);
+        jit_object_method_typed(x, gensym("type"), 1, dim, NULL);
+        break;
+    }
+    atom_setlong(dim, 1);
+    jit_object_method_typed(x, gensym("planecount"), 1, dim, NULL);
+    jit_obj->data = x->data;
+    jit_obj->datatype = x->datatype;
+    jit_obj->datalen = x->datalen;
+    void *mop = max_jit_obex_adornment_get(x, _jit_sym_jit_mop);
+    t_jit_err err;
+    if(outputmode && mop)
+    {
+        /* not sure i understand this output mode */
+        if(outputmode == 1)
+        {
+            if((err = (t_jit_err)jit_object_method(
+                    jit_obj,
+                    _jit_sym_matrix_calc,
+                    jit_object_method(mop, _jit_sym_getinputlist),
+                    jit_object_method(mop, _jit_sym_getoutputlist))))
+            {
+                jit_error_code(x, err);
+            }
+            else
+            {
+                max_jit_mop_outputmatrix(x);
+            }
+        }
+        else
+        {
+            max_jit_mop_outputmatrix(x);
+        }
+    }
 }
 
 static void h5file_getHyperslab(h5file *x,
@@ -38,7 +133,7 @@ static void h5file_getHyperslab(h5file *x,
 {
     /* 
        example message we expect:
-         gethyperslab Temperature 0 10 0 10 0 10
+       gethyperslab Temperature 0 10 0 10 0 10
     */
     const t_symbol * const datasetname = atom_getsym(av);
     const char * const datasetname_str = datasetname->s_name;
@@ -136,7 +231,7 @@ static void h5file_getHyperslab(h5file *x,
         long offset = atom_getlong(av + 1 + (i * 2));
         long count = atom_getlong(av + 1 + (i * 2 + 1));
         n *= count;
-        if(offset + count >= indims[i])
+        if(offset + count - 1 >= indims[i])
         {
             object_error((t_object *)x,
                          "index for dimension %d out of bounds:"
@@ -206,7 +301,8 @@ static void h5file_getHyperslab(h5file *x,
                                  dataspace,
                                  H5P_DEFAULT,
                                  (void *)d);
-                
+                h5file_outputJitterMatrix(x, d, H5T_FLOAT, n, 4,
+                                          rank, counts);
                 for(int i = 0; i < n; i++)
                 {
                     atom_setfloat(out + i + outoffset, d[i]);
@@ -245,6 +341,11 @@ static void h5file_getHyperslab(h5file *x,
                                  dataspace,
                                  H5P_DEFAULT,
                                  (void *)d);
+                for(int i = 0; i < n; i++)
+                {
+                    atom_setfloat(out + i + outoffset, d[i]);
+                }
+                free(d);
             }
             break;
             case H5T_ORDER_BE:
@@ -494,6 +595,9 @@ static void h5file_open(h5file *x, t_symbol *s)
 static void h5file_free(h5file *x)
 {
     h5file_doclose(x);
+    max_jit_mop_free(x);
+    jit_object_free(max_jit_obex_jitob_get(x));
+    max_jit_obex_free(x);
 }
 
 static void h5file_assist(h5file *x, void *b, long m, long a, char *s)
@@ -551,9 +655,25 @@ static void h5file_assist(h5file *x, void *b, long m, long a, char *s)
 
 static void *h5file_new(t_symbol *sym, long ac, t_atom *av)
 {
-	h5file *x = object_alloc(h5file_class);
+	/* h5file *x = object_alloc(h5file_class); */
+    /* h5file *x = (h5file *)max_jit_obex_new(h5file_class, gensym("h5file_jit")); */
+    h5file *x = (h5file *)max_jit_object_alloc(h5file_class, gensym("h5file_jit"));
     if(x == NULL)
     {
+        return NULL;
+    }
+    void *o = jit_object_new(gensym("h5file_jit"));
+    if(o)
+    {
+        max_jit_mop_setup_simple(x, o, ac, av);
+        max_jit_attr_args(x, ac, av);
+    }
+    else
+    {
+        jit_object_error((t_object *)x,
+                         "h5file_jit: could not allocate object");
+        freeobject((t_object *)x);
+        x = NULL;
         return NULL;
     }
     /* x->name = NULL; */
@@ -562,44 +682,75 @@ static void *h5file_new(t_symbol *sym, long ac, t_atom *av)
     /* { */
     /*     x->name_mangled = h5max_mangleName(x->name); */
     /* } */
-    x->outlets[H5FILE_OUTLET_INFO] = outlet_new((t_object *)x, NULL);
+    /* x->outlets[H5FILE_OUTLET_INFO] = outlet_new((t_object *)x, NULL); */
+    max_jit_obex_dumpout_set(x, x->outlets[H5FILE_OUTLET_INFO]);
     x->outlets[H5FILE_OUTLET_MAIN] = outlet_new((t_object *)x, NULL);
-    if(ac)
-    {
-        if(atom_gettype(av) != A_SYM)
-        {
-            object_error((t_object *)x,
-                         "first argument must be a symbol (file name)");
-        }
-        else
-        {
-            h5file_open(x, atom_getsym(av));
-        }
-    }
+    /* x->jit_matrix_name = _jit_sym_nothing; */
+    /* long attrstart = max_jit_attr_args_offset(ac, av); */
+    /* max_jit_attr_args(x, ac, av); */
+    /* if(ac) */
+    /* { */
+    /*     if(atom_gettype(av) != A_SYM) */
+    /*     { */
+    /*         object_error((t_object *)x, */
+    /*                      "first argument must be a symbol (file name)"); */
+    /*     } */
+    /*     else */
+    /*     { */
+    /*         h5file_open(x, atom_getsym(av)); */
+    /*     } */
+    /* } */
 	return x;
 }
 
 void ext_main(void *r)
 {
-	t_class *c = class_new("h5.file",
-                           (method)h5file_new,
-                           (method)h5file_free,
-                           (short)sizeof(h5file),
-                           0L, A_GIMME, 0);
+    h5file_jit_init();
+	t_class *max_class = class_new("h5.file",
+                                   (method)h5file_new,
+                                   (method)h5file_free,
+                                   (short)sizeof(h5file),
+                                   0L, A_GIMME, 0);
 
-    class_addmethod(c, (method)h5file_info, "info", 0);
-    class_addmethod(c, (method)h5file_getHyperslab, "gethyperslab", A_GIMME, 0);
-	class_addmethod(c, (method)h5file_open, "open", A_DEFSYM, 0);
-    class_addmethod(c, (method)h5file_close, "close", 0);
-	class_addmethod(c, (method)h5file_assist,	"assist", A_CANT, 0);
+    /* void *p = max_jit_classex_setup(calcoffset(h5file, obex)); */
+    max_jit_class_obex_setup(max_class, calcoffset(h5file, obex));
+    void *jit_class = jit_class_findbyname(gensym("h5file_jit"));
+    /* max_jit_classex_mop_wrap(p, jit_class, */
+    /*                          MAX_JIT_MOP_FLAGS_OWN_OUTPUTMATRIX */
+    /*                          | MAX_JIT_MOP_FLAGS_OWN_JIT_MATRIX); */
+    max_jit_class_mop_wrap(max_class, jit_class,
+                           MAX_JIT_MOP_FLAGS_OWN_OUTPUTMATRIX
+                           | MAX_JIT_MOP_FLAGS_OWN_JIT_MATRIX);
+    /* max_jit_classex_standard_wrap(p, jit_class, 0); */
+    max_jit_class_wrap_standard(max_class, jit_class, 0);
+    /* don't think i need this, since i'll call it from 
+       the gethyperslab routine */
+    /* max_addmethod_usurp_low((method)h5file_outputJitterMatrix, */
+    /*                         "outputmatrix"); */
+
+    /* void *attr = NULL; */
+
+    /* attrflags = JIT_ATTR_GET_DEFER_LOW | JIT_ATTR_SET_DEFER_LOW; */
+    /* long attrflags = 0; */
+    /* attr = jit_object_new(_jit_sym_jit_attr_offset, "jit_matrix_name", _jit_sym_symbol, attrflags, */
+	/* 					  (method)0L, (method)0L, calcoffset(h5file, jit_matrix_name)); */
+    /* object_addattr_parse(attr, "label", _jit_sym_symbol, 0, "\"Jitter Matrix Name\""); */
+	/* max_jit_classex_addattr(p, attr); */
+
+    class_addmethod(max_class, (method)h5file_info, "info", 0);
+    class_addmethod(max_class, (method)h5file_getHyperslab, "gethyperslab", A_GIMME, 0);
+	class_addmethod(max_class, (method)h5file_open, "open", A_DEFSYM, 0);
+    class_addmethod(max_class, (method)h5file_close, "close", 0);
+	class_addmethod(max_class, (method)h5file_assist,	"assist", A_CANT, 0);
 
     /* CLASS_ATTR_SYM(c, "name", 0, h5file, name); */
     /* CLASS_ATTR_ACCESSORS(c, "name", */
     /*                      h5file_name_get, */
     /*                      h5file_name_set); */
-    
-	class_register(CLASS_BOX, c);
-	h5file_class = c;
+
+    /* max_jit_classex_standard_wrap(p, NULL, 0); */
+	class_register(CLASS_BOX, max_class);
+	h5file_class = max_class;
     
 	ps_emptystring = gensym("");
     ps_dataset = gensym("dataset");
